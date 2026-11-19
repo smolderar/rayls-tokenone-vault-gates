@@ -20,6 +20,14 @@ const cases = [
   ['plan SHA-256 in the log edited', l => { l.planSha256 = l.planSha256.replace(/^./, c => c === 'a' ? 'b' : 'a'); }],
   ['last event removed from the R3-T6 receipt', l => { find(l, 'R3-T6').receipt.logs.pop(); }],
 ];
+// The untouched log must pass first; otherwise a rejection would prove nothing.
+const baseRun = spawnSync(process.execPath, [path.join(__dirname, 'check.js'), '--log', LOG, '--rpc', RPC, '--skip-mainnet', '--no-write', '--quiet'], { encoding: 'utf8' });
+if (baseRun.status !== 0) {
+  console.log('untouched log does NOT pass the checker, so tamper tests are not meaningful:');
+  console.log(((baseRun.stdout || '') + (baseRun.stderr || '')).split('\n').filter(x => x.includes('FAIL') || x.includes('error')).slice(0, 10).join('\n'));
+  process.exit(1);
+}
+console.log('untouched log: PASS');
 const dir = path.join(OUT, 'tamper'); fs.mkdirSync(dir, { recursive: true });
 const rows = []; let allRejected = true;
 console.log(`tamper tests | ${cases.length} edited copies of ${path.basename(LOG)} | each must be rejected`);

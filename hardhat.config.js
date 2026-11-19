@@ -2,7 +2,7 @@
 module.exports = {
   solidity: '0.8.24',
   networks: {
-    hardhat: { chainId: 7295799, hardfork: 'cancun', throwOnTransactionFailures: false, throwOnCallFailures: true,
+    hardhat: { chainId: 7295799, hardfork: 'prague', throwOnTransactionFailures: false, throwOnCallFailures: true,
       allowBlocksWithSameTimestamp: true, initialBaseFeePerGas: 0, mining: { auto: true } }
   }
 };
