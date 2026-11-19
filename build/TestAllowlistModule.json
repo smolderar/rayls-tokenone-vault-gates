@@ -1,0 +1,227 @@
+{
+ "input": {
+  "language": "Solidity",
+  "sources": {
+   "TestAllowlistModule.sol": {
+    "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n\nimport {ICompliance} from \"./interfaces/ICompliance.sol\";\n\n/// @title TestAllowlistModule\n/// @notice Minimal compliance module for testnet tests of CompliantERC20.\n///         This is my own test module, not TokenOne's (their module implementation is not verified).\n///         Rule: a wallet can send or receive only while it is on the allowlist.\n///         Mint (from == 0) needs an allowlisted receiver. Burn (to == 0) needs an allowlisted sender.\ncontract TestAllowlistModule is ICompliance {\n    address public immutable owner;\n    mapping(address => bool) public isAllowlisted;\n\n    event AllowlistSet(address indexed account, bool allowed);\n\n    error NotOwner();\n\n    constructor() {\n        owner = msg.sender;\n    }\n\n    function setAllowlisted(address account, bool allowed) external {\n        if (msg.sender != owner) revert NotOwner();\n        isAllowlisted[account] = allowed;\n        emit AllowlistSet(account, allowed);\n    }\n\n    function setAllowlistedBatch(address[] calldata accounts, bool allowed) external {\n        if (msg.sender != owner) revert NotOwner();\n        for (uint256 i = 0; i < accounts.length; i++) {\n            isAllowlisted[accounts[i]] = allowed;\n            emit AllowlistSet(accounts[i], allowed);\n        }\n    }\n\n    function canSend(address account) public view returns (bool) {\n        return isAllowlisted[account];\n    }\n\n    function canReceive(address account) public view returns (bool) {\n        return isAllowlisted[account];\n    }\n\n    function canTransfer(address from, address to, uint256, uint256) external view returns (bool) {\n        if (from == address(0)) return canReceive(to);\n        if (to == address(0)) return canSend(from);\n        return canSend(from) && canReceive(to);\n    }\n}\n"
+   },
+   "interfaces/ICompliance.sol": {
+    "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n\n/// @title ICompliance — módulo de compliance plugável (upgradeable, por tenant)\n/// @notice O token delega TODA a política de allowlist/KYC/elegibilidade-por-tranche\n///         para este módulo. O token só cuida do que é intrínseco (freeze, pause).\n///         `from`/`to` == address(0) codificam mint/burn (semântica ERC-1155).\ninterface ICompliance {\n    /// @notice Elegibilidade de origem (KYC/AML aprovado para enviar).\n    function canSend(address account) external view returns (bool);\n\n    /// @notice Elegibilidade de destino (KYC/AML aprovado para receber).\n    function canReceive(address account) external view returns (bool);\n\n    /// @notice Autoriza a transferência específica.\n    ///         Deve considerar allowlist por (endereço, tokenId), regras por tranche\n    ///         (ex.: TRJ só para investidor qualificado), e o caso mint (from==0).\n    function canTransfer(address from, address to, uint256 tokenId, uint256 amount)\n        external\n        view\n        returns (bool);\n}\n"
+   }
+  },
+  "settings": {
+   "evmVersion": "cancun",
+   "optimizer": {
+    "enabled": true,
+    "runs": 200
+   },
+   "viaIR": false,
+   "metadata": {
+    "appendCBOR": true,
+    "bytecodeHash": "ipfs",
+    "useLiteralContent": false
+   },
+   "outputSelection": {
+    "*": {
+     "*": [
+      "abi",
+      "evm.bytecode.object",
+      "evm.deployedBytecode.object",
+      "evm.deployedBytecode.immutableReferences",
+      "metadata"
+     ]
+    }
+   }
+  }
+ },
+ "abi": [
+  {
+   "inputs": [],
+   "stateMutability": "nonpayable",
+   "type": "constructor"
+  },
+  {
+   "inputs": [],
+   "name": "NotOwner",
+   "type": "error"
+  },
+  {
+   "anonymous": false,
+   "inputs": [
+    {
+     "indexed": true,
+     "internalType": "address",
+     "name": "account",
+     "type": "address"
+    },
+    {
+     "indexed": false,
+     "internalType": "bool",
+     "name": "allowed",
+     "type": "bool"
+    }
+   ],
+   "name": "AllowlistSet",
+   "type": "event"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "address",
+     "name": "account",
+     "type": "address"
+    }
+   ],
+   "name": "canReceive",
+   "outputs": [
+    {
+     "internalType": "bool",
+     "name": "",
+     "type": "bool"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "address",
+     "name": "account",
+     "type": "address"
+    }
+   ],
+   "name": "canSend",
+   "outputs": [
+    {
+     "internalType": "bool",
+     "name": "",
+     "type": "bool"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "address",
+     "name": "from",
+     "type": "address"
+    },
+    {
+     "internalType": "address",
+     "name": "to",
+     "type": "address"
+    },
+    {
+     "internalType": "uint256",
+     "name": "",
+     "type": "uint256"
+    },
+    {
+     "internalType": "uint256",
+     "name": "",
+     "type": "uint256"
+    }
+   ],
+   "name": "canTransfer",
+   "outputs": [
+    {
+     "internalType": "bool",
+     "name": "",
+     "type": "bool"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "address",
+     "name": "",
+     "type": "address"
+    }
+   ],
+   "name": "isAllowlisted",
+   "outputs": [
+    {
+     "internalType": "bool",
+     "name": "",
+     "type": "bool"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "owner",
+   "outputs": [
+    {
+     "internalType": "address",
+     "name": "",
+     "type": "address"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "address",
+     "name": "account",
+     "type": "address"
+    },
+    {
+     "internalType": "bool",
+     "name": "allowed",
+     "type": "bool"
+    }
+   ],
+   "name": "setAllowlisted",
+   "outputs": [],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "address[]",
+     "name": "accounts",
+     "type": "address[]"
+    },
+    {
+     "internalType": "bool",
+     "name": "allowed",
+     "type": "bool"
+    }
+   ],
+   "name": "setAllowlistedBatch",
+   "outputs": [],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  }
+ ],
+ "bytecode": "60a060405234801561000f575f80fd5b50336080526080516104fc6100395f395f818160e20152818161016a015261028701526104fc5ff3fe608060405234801561000f575f80fd5b506004361061007a575f3560e01c80638da5cb5b116100585780638da5cb5b146100dd57806390d370ba146100b55780639aa541811461011c578063a02ff6851461012f575f80fd5b806305a3b8091461007e5780632bc06a92146100b557806365c05aed146100c8575b5f80fd5b6100a061008c366004610396565b5f6020819052908152604090205460ff1681565b60405190151581526020015b60405180910390f35b6100a06100c3366004610396565b610142565b6100db6100d63660046103c5565b61015f565b005b6101047f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020016100ac565b6100db61012a366004610442565b61027c565b6100a061013d366004610473565b610321565b6001600160a01b03165f9081526020819052604090205460ff1690565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146101a8576040516330cd747160e01b815260040160405180910390fd5b5f5b8281101561027657815f808686858181106101c7576101c76104b2565b90506020020160208101906101dc9190610396565b6001600160a01b0316815260208101919091526040015f20805460ff1916911515919091179055838382818110610215576102156104b2565b905060200201602081019061022a9190610396565b6001600160a01b03167fff571df7d74779bb3bc4c418144ed2539441681cec39b558e6639f5faefc069583604051610266911515815260200190565b60405180910390a26001016101aa565b50505050565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146102c5576040516330cd747160e01b815260040160405180910390fd5b6001600160a01b0382165f8181526020818152604091829020805460ff191685151590811790915591519182527fff571df7d74779bb3bc4c418144ed2539441681cec39b558e6639f5faefc0695910160405180910390a25050565b5f6001600160a01b0385166103405761033984610142565b9050610373565b6001600160a01b0384166103575761033985610142565b61036085610142565b8015610370575061037084610142565b90505b949350505050565b80356001600160a01b0381168114610391575f80fd5b919050565b5f602082840312156103a6575f80fd5b6103af8261037b565b9392505050565b80358015158114610391575f80fd5b5f805f604084860312156103d7575f80fd5b833567ffffffffffffffff808211156103ee575f80fd5b818601915086601f830112610401575f80fd5b81358181111561040f575f80fd5b8760208260051b8501011115610423575f80fd5b60209283019550935061043991860190506103b6565b90509250925092565b5f8060408385031215610453575f80fd5b61045c8361037b565b915061046a602084016103b6565b90509250929050565b5f805f8060808587031215610486575f80fd5b61048f8561037b565b935061049d6020860161037b565b93969395505050506040820135916060013590565b634e487b7160e01b5f52603260045260245ffdfea264697066735822122054984c82e9e0d808112085e4f82d2886316705181c56a01828e71ed0ffa8b0bc64736f6c63430008180033",
+ "deployedBytecode": "608060405234801561000f575f80fd5b506004361061007a575f3560e01c80638da5cb5b116100585780638da5cb5b146100dd57806390d370ba146100b55780639aa541811461011c578063a02ff6851461012f575f80fd5b806305a3b8091461007e5780632bc06a92146100b557806365c05aed146100c8575b5f80fd5b6100a061008c366004610396565b5f6020819052908152604090205460ff1681565b60405190151581526020015b60405180910390f35b6100a06100c3366004610396565b610142565b6100db6100d63660046103c5565b61015f565b005b6101047f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020016100ac565b6100db61012a366004610442565b61027c565b6100a061013d366004610473565b610321565b6001600160a01b03165f9081526020819052604090205460ff1690565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146101a8576040516330cd747160e01b815260040160405180910390fd5b5f5b8281101561027657815f808686858181106101c7576101c76104b2565b90506020020160208101906101dc9190610396565b6001600160a01b0316815260208101919091526040015f20805460ff1916911515919091179055838382818110610215576102156104b2565b905060200201602081019061022a9190610396565b6001600160a01b03167fff571df7d74779bb3bc4c418144ed2539441681cec39b558e6639f5faefc069583604051610266911515815260200190565b60405180910390a26001016101aa565b50505050565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146102c5576040516330cd747160e01b815260040160405180910390fd5b6001600160a01b0382165f8181526020818152604091829020805460ff191685151590811790915591519182527fff571df7d74779bb3bc4c418144ed2539441681cec39b558e6639f5faefc0695910160405180910390a25050565b5f6001600160a01b0385166103405761033984610142565b9050610373565b6001600160a01b0384166103575761033985610142565b61036085610142565b8015610370575061037084610142565b90505b949350505050565b80356001600160a01b0381168114610391575f80fd5b919050565b5f602082840312156103a6575f80fd5b6103af8261037b565b9392505050565b80358015158114610391575f80fd5b5f805f604084860312156103d7575f80fd5b833567ffffffffffffffff808211156103ee575f80fd5b818601915086601f830112610401575f80fd5b81358181111561040f575f80fd5b8760208260051b8501011115610423575f80fd5b60209283019550935061043991860190506103b6565b90509250925092565b5f8060408385031215610453575f80fd5b61045c8361037b565b915061046a602084016103b6565b90509250929050565b5f805f8060808587031215610486575f80fd5b61048f8561037b565b935061049d6020860161037b565b93969395505050506040820135916060013590565b634e487b7160e01b5f52603260045260245ffdfea264697066735822122054984c82e9e0d808112085e4f82d2886316705181c56a01828e71ed0ffa8b0bc64736f6c63430008180033",
+ "immutableReferences": {
+  "8": [
+   {
+    "length": 32,
+    "start": 226
+   },
+   {
+    "length": 32,
+    "start": 362
+   },
+   {
+    "length": 32,
+    "start": 647
+   }
+  ]
+ },
+ "metadata": "{\"compiler\":{\"version\":\"0.8.24+commit.e11b9ed9\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"NotOwner\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bool\",\"name\":\"allowed\",\"type\":\"bool\"}],\"name\":\"AllowlistSet\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"canReceive\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"canSend\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"canTransfer\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"isAllowlisted\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"internalType\":\"bool\",\"name\":\"allowed\",\"type\":\"bool\"}],\"name\":\"setAllowlisted\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address[]\",\"name\":\"accounts\",\"type\":\"address[]\"},{\"internalType\":\"bool\",\"name\":\"allowed\",\"type\":\"bool\"}],\"name\":\"setAllowlistedBatch\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"title\":\"TestAllowlistModule\",\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"canReceive(address)\":{\"notice\":\"Elegibilidade de destino (KYC/AML aprovado para receber).\"},\"canSend(address)\":{\"notice\":\"Elegibilidade de origem (KYC/AML aprovado para enviar).\"}},\"notice\":\"Minimal compliance module for testnet tests of CompliantERC20.         This is my own test module, not TokenOne's (their module implementation is not verified).         Rule: a wallet can send or receive only while it is on the allowlist.         Mint (from == 0) needs an allowlisted receiver. Burn (to == 0) needs an allowlisted sender.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"TestAllowlistModule.sol\":\"TestAllowlistModule\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"TestAllowlistModule.sol\":{\"keccak256\":\"0x50557e2e918c2a6ccd8d943cf7499b40f743a600acdc828070b24f4872ef76d9\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://bcd385d8e087174002ba3e8bfbcc6c4f4ece24bda7e46e22e495d34b873b7446\",\"dweb:/ipfs/QmXzauYidDf3vwC66nAtZCy9Kr2ADdU7LXETD6xexXVVoy\"]},\"interfaces/ICompliance.sol\":{\"keccak256\":\"0x79d6eaa313fde91d6d4d854229d496ecfe6f502e333c91c3c597d171e038eed7\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://798a4dbca740b70a72ff1ca2a3e758c92ce60e79527e9c1a55eb1db9866d71da\",\"dweb:/ipfs/QmWqpgrEPf8ApK8gBoNHpAYEZa1iwQsB9hpLPwtCucMenx\"]}},\"version\":1}"
+}

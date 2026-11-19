@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CompliantERC20 rule matrix | Rayls Testnet</title>
+<style>
+  :root { --bg:#0b0b0d; --panel:#16161a; --line:#2a2a31; --text:#ececec; --dim:#9a9aa4; --yellow:#FFE94A; --green:#3ddc84; --red:#ff5c5c; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; }
+  header { padding:7px 14px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  header h1 { font-size:17px; margin:0; font-weight:700; white-space:nowrap; }
+  #clock { color:var(--yellow); font-size:17px; white-space:nowrap; }
+  main { padding:8px 14px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:9px 12px; margin-bottom:9px; }
+  h2 { font-size:15px; margin:0 0 6px 0; color:var(--yellow); font-weight:700; }
+  .row { display:flex; gap:10px 18px; flex-wrap:wrap; align-items:center; }
+  .dim { color:var(--dim); }
+  .ok { color:var(--green); font-weight:700; }
+  .bad { color:var(--red); font-weight:700; }
+  button { font:inherit; font-weight:700; background:var(--yellow); color:#111; border:0; border-radius:6px; padding:7px 14px; cursor:pointer; }
+  button:disabled { background:#55554a; color:#222; cursor:default; }
+  button.secondary { background:#2e2e36; color:var(--text); }
+  #next { font-size:17px; font-weight:700; }
+  #banner { font-size:16px; margin-top:8px; padding:8px 10px; border-radius:6px; background:#101014; border:1px solid var(--line); min-height:84px; white-space:pre-wrap; }
+  #banner.ok { border-color:var(--green); }
+  #banner.bad { border-color:var(--red); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th, td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:400; }
+  a { color:#8cc8ff; text-decoration:none; }
+  #summary span { display:inline-block; min-width:72px; }
+  #wallets span.w { margin-right:16px; white-space:nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CompliantERC20 rule matrix | Rayls Testnet (chain ID 7295799)</h1>
+  <div id="clock"></div>
+</header>
+<main>
+  <section>
+    <div id="next"><span id="nextId" style="color:var(--yellow)"></span> <span id="nextLabel"></span></div>
+    <div class="dim" id="nextDetail" style="margin-top:2px"></div>
+    <div style="margin-top:8px" class="row">
+      <button id="run" disabled>Run next step</button>
+      <button class="secondary" id="ack" style="display:none">Mismatch noted, continue</button>
+      <span id="cur" style="font-size:16px"></span>
+    </div>
+    <div id="banner"></div>
+  </section>
+
+  <section>
+    <div id="wallets"></div>
+    <div class="row" style="margin-top:6px">
+      <button class="secondary" id="connect">Connect W3 wallets</button>
+      <button class="secondary" id="b0a">B0a: NF01 mainnet vs compiled</button>
+      <button class="secondary" id="dl">Download log</button>
+      <span id="net" class="dim"></span>
+      <span id="extra"></span>
+    </div>
+    <div id="contracts" class="dim" style="margin-top:6px">contracts: not deployed yet</div>
+    <div id="b0" style="margin-top:4px"></div>
+  </section>
+
+  <section>
+    <h2>Matrix summary</h2>
+    <div id="summary"></div>
+    <div id="endstate" style="margin-top:6px"></div>
+  </section>
+
+  <section>
+    <h2>Transactions (newest first)</h2>
+    <table>
+      <thead><tr><th>Step</th><th>Sender</th><th>Action</th><th>Expected</th><th>Result</th><th>Block</th><th>Block time (UTC)</th><th>Tx</th><th>Match</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+"use strict";
+const C = /*__CONFIG__*/null;
+
+// ───────────── helpers ─────────────
+const $ = id => document.getElementById(id);
+const W = C.wallets;
+const ZERO = '0x0000000000000000000000000000000000000000';
+const lc = a => String(a).toLowerCase();
+const short = a => a.slice(0, 6) + '...' + a.slice(-4);
+const U1 = 1000000n;             // 1 W3GT in base units (6 decimals)
+const FREEZE_ALL = 1000000000000n; // more than any balance, so availableBalance = 0
+const GAS = 200000;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const utc = sec => new Date(Number(sec) * 1000).toISOString().replace('T', ' ').slice(0, 19);
+const nowUtc = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
+function group(intStr) { return intStr.replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function fmtUnits(v, dec) {
+  v = BigInt(v); const neg = v < 0n; if (neg) v = -v;
+  const base = 10n ** BigInt(dec); const i = v / base; let f = (v % base).toString().padStart(dec, '0').replace(/0+$/, '');
+  return (neg ? '-' : '') + group(i.toString()) + (f ? '.' + f : '');
+}
+function roleOf(a) {
+  if (!a) return null; if (lc(a) === ZERO) return 'zero';
+  for (const [k, v] of Object.entries(W)) if (lc(v) === lc(a)) return k;
+  if (S.token && lc(a) === lc(S.token)) return 'token';
+  if (S.module && lc(a) === lc(S.module)) return 'module';
+  return null;
+}
+function who(a) { const r = roleOf(a); if (r === 'zero') return '0x0'; return r ? r : short(a); }
+function fmtArg(v) {
+  if (typeof v === 'string' && /^0x[0-9a-fA-F]{40}$/.test(v)) return who(v);
+  if (typeof v === 'bigint') return v.toString();
+  return String(v);
+}
+
+// ───────────── ABI encoding (only the types this bench uses) ─────────────
+const hex64 = n => BigInt(n).toString(16).padStart(64, '0');
+const encAddr = a => lc(a).replace(/^0x/, '').padStart(64, '0');
+const encUint = n => hex64(n);
+const encBool = b => hex64(b ? 1 : 0);
+function encString(s) {
+  const bytes = new TextEncoder().encode(s); let h = '';
+  for (const b of bytes) h += b.toString(16).padStart(2, '0');
+  return hex64(bytes.length) + h.padEnd(Math.ceil(h.length / 64) * 64, '0');
+}
+const encAddrArray = arr => hex64(arr.length) + arr.map(encAddr).join('');
+const call = (sel, ...words) => '0x' + sel + words.join('');
+function tokenCtorArgs(module) {
+  const nameEnc = encString(C.token.name), symEnc = encString(C.token.symbol);
+  const head = 7 * 32;
+  return hex64(head) + hex64(head + nameEnc.length / 2) + encUint(C.token.decimals) +
+    encAddr(W.Issuer) + encAddr(W.Issuer) + encAddr(W.Issuer) + encAddr(module) + nameEnc + symEnc;
+}
+
+// ───────────── ABI decoding ─────────────
+function words(hex) { const h = hex.replace(/^0x/, ''); const o = []; for (let i = 0; i < h.length; i += 64) o.push(h.slice(i, i + 64)); return o; }
+function decWord(w, t) {
+  w = (w || '').padEnd(64, '0');
+  if (t === 'address') return '0x' + w.slice(24);
+  if (t === 'bool') return BigInt('0x' + w) !== 0n;
+  if (t.startsWith('uint')) return BigInt('0x' + w);
+  return '0x' + w;
+}
+const STATIC = t => t === 'address' || t === 'bool' || /^uint\d*$/.test(t) || /^bytes\d+$/.test(t);
+function decodeError(data) {
+  if (!data || data.length < 10) return null;
+  const sel = data.slice(2, 10).toLowerCase(); const body = data.slice(10);
+  if (sel === '08c379a0') { // Error(string)
+    const w = words(body); const len = Number(BigInt('0x' + w[1])); const hx = body.slice(128, 128 + len * 2);
+    let s = ''; for (let i = 0; i < hx.length; i += 2) s += String.fromCharCode(parseInt(hx.slice(i, i + 2), 16));
+    return { name: 'Error', selector: sel, args: [s] };
+  }
+  const e = C.errors[sel];
+  if (!e) return { name: 'unknown error 0x' + sel, selector: sel, args: [] };
+  if (!e.types.every(STATIC)) return { name: e.name, selector: sel, args: ['(raw) 0x' + body] };
+  const w = words(body);
+  return { name: e.name, selector: sel, args: e.types.map((t, i) => decWord(w[i], t)) };
+}
+const errText = e => e ? `${e.name}(${e.args.map(fmtArg).join(', ')})` : 'reverted without data';
+function decodeLog(log) {
+  const ev = C.events[lc(log.topics[0] || '')];
+  if (!ev) return { name: 'unknown event', emitter: log.address, args: [] };
+  let ti = 1, di = 0; const dw = words(log.data || '0x'); const args = [];
+  for (const inp of ev.inputs) {
+    if (inp.indexed) args.push(decWord((log.topics[ti++] || '0x').replace(/^0x/, ''), inp.type));
+    else args.push(STATIC(inp.type) ? decWord(dw[di++], inp.type) : '(dynamic)');
+  }
+  return { name: ev.name, emitter: log.address, args };
+}
+const evText = d => `${d.name}(${d.args.map(fmtArg).join(', ')})`;
+
+// ───────────── RPC (reads go through the local server to the testnet RPC) ─────────────
+let rpcId = 0;
+async function rpc(method, params, path) {
+  const r = await fetch(path || '/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method, params }) });
+  return r.json();
+}
+function findRevertData(err) {
+  const seen = new Set(); const stack = [err];
+  while (stack.length) {
+    const x = stack.pop();
+    if (x == null) continue;
+    if (typeof x === 'string') { if (/^0x[0-9a-fA-F]{8,}$/.test(x)) return x; continue; }
+    if (typeof x === 'object') {
+      if (seen.has(x)) continue; seen.add(x);
+      if (typeof x.data === 'string' && /^0x[0-9a-fA-F]{8,}$/.test(x.data)) return x.data;
+      for (const v of Object.values(x)) stack.push(v);
+    }
+  }
+  return null;
+}
+async function ethCall(tx, block) {
+  const r = await rpc('eth_call', [tx, block || 'latest']);
+  if (r.error) { const d = findRevertData(r.error); return { ok: false, revertData: d, error: decodeError(d), message: r.error.message }; }
+  return { ok: true, result: r.result };
+}
+async function readWord(to, data, block) { const r = await ethCall({ to, data }, block); return r.ok ? r.result : null; }
+async function readU(to, data, block) { const r = await readWord(to, data, block); return r === null ? null : BigInt(r); }
+async function readB(to, data, block) { const r = await readU(to, data, block); return r === null ? null : r !== 0n; }
+async function readA(to, data, block) { const r = await readWord(to, data, block); return r === null ? null : '0x' + r.replace(/^0x/, '').slice(24); }
+
+// ───────────── state ─────────────
+let S = { format: 'w3-bench-log-1', chainId: C.chainId, planSha256: C.planHash, wallets: W, module: null, token: null, b0: {}, records: [] };
+let busy = false, holdAfterMismatch = false;
+async function save(rec) {
+  try {
+    await fetch('/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(S, replacer, 1) });
+    if (rec) await fetch('/record', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rec, replacer) });
+  } catch (e) { banner('Could not save the log to the local server. Use "Download log".', 'bad'); }
+}
+function replacer(k, v) { return typeof v === 'bigint' ? v.toString() : v; }
+
+// ───────────── steps (same order as the plan) ─────────────
+const ev = (name, ...args) => ({ name, args });
+function steps() {
+  const s = [];
+  s.push({ id: 'S1', kind: 'setup', sender: 'Issuer', target: 'hashaddr', label: 'Commit plan SHA-256 as transaction data (to 0xa1ad...e323, an address made from the hash, see addendum 2)',
+    data: () => '0x' + C.planHash, expect: { status: 1 } });
+  s.push({ id: 'S2', kind: 'deploy', what: 'module', sender: 'Issuer', target: null, label: 'Deploy TestAllowlistModule (my test module)',
+    data: () => C.module.creation, expect: { status: 1 } });
+  s.push({ id: 'S3', kind: 'deploy', what: 'token', sender: 'Issuer', target: null, label: `Deploy CompliantERC20 "${C.token.name}" (${C.token.symbol}), all roles to Issuer, module from S2`,
+    data: () => C.token.creation + tokenCtorArgs(S.module), expect: { status: 1 } });
+  s.push({ id: 'S4', kind: 'setup', sender: 'Issuer', target: 'module', label: 'Allowlist Issuer and Investor',
+    data: () => call(C.sel['setAllowlistedBatch(address[],bool)'], hex64(64), encBool(true), encAddrArray([W.Issuer, W.Investor])),
+    expect: { status: 1, events: [ev('AllowlistSet', 'Issuer', true), ev('AllowlistSet', 'Investor', true)] } });
+  s.push({ id: 'S5', kind: 'setup', sender: 'Issuer', target: 'token', label: 'Mint 1,000 W3GT to Investor',
+    data: () => call(C.sel['mint(address,uint256)'], encAddr(W.Investor), encUint(1000n * U1)),
+    expect: { status: 1, events: [ev('Transfer', 'zero', 'Investor', 1000n * U1)] } });
+  const tr = (to) => () => call(C.sel['transfer(address,uint256)'], encAddr(W[to]), encUint(U1));
+  for (let r = 1; r <= 3; r++) {
+    const add = (sub, test, o) => s.push(Object.assign({ id: `R${r}-${sub}`, round: r, test, gas: GAS }, o));
+    add('T1', 'T1', { kind: 'test', sender: 'Investor', target: 'token', move: ['Investor', 'Issuer'], label: 'transfer Investor to Issuer, 1 W3GT (both allowlisted)',
+      data: tr('Issuer'), expect: { status: 1, events: [ev('Transfer', 'Investor', 'Issuer', U1)] } });
+    add('T2', 'T2', { kind: 'test', sender: 'Investor', target: 'token', move: ['Investor', 'Outsider'], label: 'transfer Investor to Outsider, 1 W3GT (Outsider not allowlisted)',
+      data: tr('Outsider'), expect: { status: 0, error: ev('CannotTransfer', 'Investor', 'Outsider', 0n, U1) } });
+    add('T3', 'T3', { kind: 'test', sender: 'Issuer', target: 'token', move: ['zero', 'Outsider'], label: 'mint 1 W3GT to Outsider (primary issuance)',
+      data: () => call(C.sel['mint(address,uint256)'], encAddr(W.Outsider), encUint(U1)), expect: { status: 0, error: ev('CannotTransfer', 'zero', 'Outsider', 0n, U1) } });
+    add('T4a', 'T4', { kind: 'helper', sender: 'Issuer', target: 'token', label: 'freeze Investor (setFrozenTokens above the balance)',
+      data: () => call(C.sel['setFrozenTokens(address,uint256,uint256)'], encAddr(W.Investor), encUint(0), encUint(FREEZE_ALL)), expect: { status: 1, events: [ev('Frozen', 'Investor', 0n, FREEZE_ALL)] } });
+    add('T4', 'T4', { kind: 'test', sender: 'Investor', target: 'token', move: ['Investor', 'Issuer'], label: 'transfer Investor to Issuer, 1 W3GT (Investor frozen)',
+      data: tr('Issuer'), expect: { status: 0, error: ev('InsufficientUnfrozenBalance', 'Investor', 0n, U1, 0n) } });
+    add('T4b', 'T4', { kind: 'helper', sender: 'Issuer', target: 'token', label: 'unfreeze Investor (setFrozenTokens 0)',
+      data: () => call(C.sel['setFrozenTokens(address,uint256,uint256)'], encAddr(W.Investor), encUint(0), encUint(0)), expect: { status: 1, events: [ev('Frozen', 'Investor', 0n, 0n)] } });
+    add('T5a', 'T5', { kind: 'helper', sender: 'Issuer', target: 'token', label: 'pause the token',
+      data: () => call(C.sel['pause()']), expect: { status: 1, events: [ev('Paused', 'Issuer')] } });
+    add('T5', 'T5', { kind: 'test', sender: 'Investor', target: 'token', move: ['Investor', 'Issuer'], label: 'transfer Investor to Issuer, 1 W3GT (token paused)',
+      data: tr('Issuer'), expect: { status: 0, error: ev('EnforcedPause') } });
+    add('T5b', 'T5', { kind: 'helper', sender: 'Issuer', target: 'token', label: 'unpause the token',
+      data: () => call(C.sel['unpause()']), expect: { status: 1, events: [ev('Unpaused', 'Issuer')] } });
+    add('T6', 'T6', { kind: 'test', sender: 'Issuer', target: 'token', move: ['Investor', 'Issuer'], label: 'forcedTransfer Investor to Issuer, 1 W3GT (enforcer)',
+      data: () => call(C.sel['forcedTransfer(address,address,uint256)'], encAddr(W.Investor), encAddr(W.Issuer), encUint(U1)),
+      expect: { status: 1, events: [ev('Transfer', 'Investor', 'Issuer', U1), ev('ForcedTransfer', 'Investor', 'Issuer', 0n, U1)] } });
+    add('T7', 'T7', { kind: 'test', sender: 'Issuer', target: 'token', move: ['Investor', 'Outsider'], label: 'forcedTransfer Investor to Outsider, 1 W3GT (enforcer, Outsider not allowlisted)',
+      data: () => call(C.sel['forcedTransfer(address,address,uint256)'], encAddr(W.Investor), encAddr(W.Outsider), encUint(U1)),
+      expect: { status: 0, error: ev('CannotReceive', 'Outsider') } });
+    add('T8a', 'T8', { kind: 'helper', sender: 'Issuer', target: 'module', label: 'allowlist Outsider',
+      data: () => call(C.sel['setAllowlisted(address,bool)'], encAddr(W.Outsider), encBool(true)), expect: { status: 1, events: [ev('AllowlistSet', 'Outsider', true)] } });
+    add('T8', 'T8', { kind: 'test', sender: 'Investor', target: 'token', move: ['Investor', 'Outsider'], label: 'transfer Investor to Outsider, 1 W3GT (same call as T2, Outsider now allowlisted)',
+      data: tr('Outsider'), expect: { status: 1, events: [ev('Transfer', 'Investor', 'Outsider', U1)] } });
+    add('T8b', 'T8', { kind: 'helper', sender: 'Issuer', target: 'module', label: 'remove Outsider from the allowlist',
+      data: () => call(C.sel['setAllowlisted(address,bool)'], encAddr(W.Outsider), encBool(false)), expect: { status: 1, events: [ev('AllowlistSet', 'Outsider', false)] } });
+  }
+  return s;
+}
+const STEPS = steps();
+const resolveArg = a => (a === 'zero' ? ZERO : (typeof a === 'string' && W[a]) ? lc(W[a]) : a);
+const norm = v => typeof v === 'string' ? lc(v) : (typeof v === 'bigint' ? v.toString() : String(v));
+function argsEqual(exp, got) { if (exp.length !== got.length) return false; return exp.every((a, i) => norm(resolveArg(a)) === norm(got[i])); }
+function expText(step) {
+  const x = step.expect;
+  if (x.status === 0) return 'fails: ' + `${x.error.name}(${x.error.args.map(a => typeof a === 'bigint' ? a.toString() : (a === 'zero' ? '0x0' : a)).join(', ')})`;
+  return 'success' + (x.events && step.kind === 'test' ? ': ' + x.events.map(e => e.name).join(' + ') : '');
+}
+function targetAddr(step) { if (step.target === 'hashaddr') return '0x' + C.planHash.slice(0, 40); if (step.target === 'zero') return ZERO; if (step.target === 'self') return W[step.sender]; if (step.target === 'token') return S.token; if (step.target === 'module') return S.module; return null; }
+function doneRecord(id) { return S.records.find(r => r.step === id && !r.void && r.receipt); }
+function nextStep() { return STEPS.find(st => !doneRecord(st.id)); }
+function pendingRecord() { return S.records.find(r => !r.void && r.hash && !r.receipt); }
+
+// ───────────── control reads before each test ─────────────
+async function controlReads(step) {
+  const bnHex = (await rpc('eth_blockNumber', [])).result; const T = S.token, M = S.module;
+  const sel = C.sel;
+  const from = step.move[0] === 'zero' ? ZERO : W[step.move[0]], to = W[step.move[1]];
+  const out = { block: Number(BigInt(bnHex)) };
+  out.paused = await readB(T, call(sel['paused()']), bnHex);
+  out.compliance = await readA(T, call(sel['compliance()']), bnHex);
+  out.frozenInvestor = await readU(T, call(sel['getFrozenTokens(address,uint256)'], encAddr(W.Investor), encUint(0)), bnHex);
+  out.availableInvestor = await readU(T, call(sel['availableBalance(address)'], encAddr(W.Investor)), bnHex);
+  if (from !== ZERO) out.canSendFrom = await readB(T, call(sel['canSend(address)'], encAddr(from)), bnHex);
+  out.canReceiveTo = await readB(T, call(sel['canReceive(address)'], encAddr(to)), bnHex);
+  out.canTransfer = await readB(T, call(sel['canTransfer(address,address,uint256)'], encAddr(from), encAddr(to), encUint(U1)), bnHex);
+  if (from !== ZERO) out.allowlistedFrom = await readB(M, call(sel['isAllowlisted(address)'], encAddr(from)), bnHex);
+  out.allowlistedTo = await readB(M, call(sel['isAllowlisted(address)'], encAddr(to)), bnHex);
+  out.balances = {};
+  for (const k of ['Issuer', 'Investor', 'Outsider']) out.balances[k] = await readU(T, call(sel['balanceOf(address)'], encAddr(W[k])), bnHex);
+  return out;
+}
+
+// ───────────── run one step ─────────────
+let currentAcc = null;
+async function refreshAcc() {
+  if (!window.ethereum) return;
+  const a = await window.ethereum.request({ method: 'eth_accounts' });
+  currentAcc = a && a[0] ? lc(a[0]) : null;
+  const r = currentAcc ? roleOf(currentAcc) : null;
+  $('cur').innerHTML = 'MetaMask account: ' + (currentAcc ? (r ? `<b style="color:var(--yellow)">W3 ${r}</b>` : '<span class="bad">not a W3 account</span>') : '<span class="dim">none</span>');
+}
+async function runStep(step) {
+  await refreshAcc();
+  if (currentAcc !== lc(W[step.sender])) { banner(`${step.id}: switch MetaMask to W3 ${step.sender}, then click "Run next step".`); return; }
+  const rec = { step: step.id, round: step.round || null, test: step.test || null, kind: step.kind, label: step.label, sender: step.sender,
+    from: W[step.sender], to: targetAddr(step), gasLimit: step.gas || null, expected: expText(step) };
+  if (step.kind !== 'deploy' && !rec.to) throw new Error('Contract for this step is not deployed yet.');
+  rec.data = step.data();
+  if (step.kind === 'test') {
+    banner(`${step.id}: control reads...`);
+    rec.pre = await controlReads(step);
+  }
+  const txc = { from: rec.from, data: rec.data }; if (rec.to) txc.to = rec.to; if (rec.gasLimit) txc.gas = '0x' + rec.gasLimit.toString(16);
+  const pf = await ethCall(txc, rec.pre ? '0x' + rec.pre.block.toString(16) : 'latest');
+  rec.preflight = pf.ok ? { ok: true } : { ok: false, revertData: pf.revertData, decoded: errText(pf.error) };
+  banner(`${step.id}: confirm in MetaMask as W3 ${step.sender}.` + (step.expect.status === 0 ? '\nThis one is expected to fail: MetaMask may warn. Confirm anyway, so it is mined as a failed transaction.' : ''));
+  const params = { from: rec.from, data: rec.data, value: '0x0' }; if (rec.to) params.to = rec.to; if (rec.gasLimit) params.gas = '0x' + rec.gasLimit.toString(16);
+  let hash;
+  try { hash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [params] }); }
+  catch (e) {
+    rec.void = 'not sent: ' + (e && (e.message || e.code) || 'wallet error'); rec.voidAtUtc = nowUtc();
+    S.records.push(rec); await save(rec); render();
+    banner(`${step.id}: not sent (${rec.void}). Logged as void. If MetaMask is on another account, switch it to W3 ${step.sender} and run again.`, 'bad');
+    return;
+  }
+  rec.hash = hash; rec.sentAtUtc = nowUtc(); S.records.push(rec); await save(rec); render();
+  await finish(rec, step);
+}
+async function finish(rec, step) {
+  banner(`${rec.step}: waiting for the receipt ${short(rec.hash)} ...`);
+  let rc = null;
+  for (let i = 0; i < 160 && !rc; i++) { const r = await rpc('eth_getTransactionReceipt', [rec.hash]); rc = r.result; if (!rc) await sleep(1500); }
+  if (!rc) { banner(`${rec.step}: no receipt yet. Click "Run next step" to check again.`, 'bad'); return; }
+  const bn = BigInt(rc.blockNumber);
+  const blk = (await rpc('eth_getBlockByNumber', [rc.blockNumber, false])).result;
+  rec.receipt = { status: Number(BigInt(rc.status)), blockNumber: Number(bn), gasUsed: Number(BigInt(rc.gasUsed)), contractAddress: rc.contractAddress || null,
+    logs: rc.logs.map(l => ({ address: l.address, topics: l.topics, data: l.data })) };
+  rec.blockTimeUtc = utc(BigInt(blk.timestamp));
+  rec.events = rc.logs.map(l => { const d = decodeLog(l); return { name: d.name, emitter: d.emitter, args: d.args, text: evText(d) }; });
+  if (rec.receipt.status === 0) {
+    const txc = { from: rec.from, data: rec.data, gas: rec.gasLimit ? '0x' + rec.gasLimit.toString(16) : undefined }; if (rec.to) txc.to = rec.to;
+    const rp = await ethCall(txc, '0x' + (bn - 1n).toString(16));
+    rec.replay = { block: Number(bn - 1n), revertData: rp.ok ? null : rp.revertData, decoded: rp.ok ? 'replay did not revert' : errText(rp.error), error: rp.ok ? null : rp.error };
+  }
+  if (step.kind === 'deploy') {
+    S[step.what] = rec.receipt.contractAddress;
+    const code = (await rpc('eth_getCode', [rec.receipt.contractAddress, 'latest'])).result;
+    const art = C[step.what];
+    S.b0[step.what + 'Testnet'] = Object.assign({ address: rec.receipt.contractAddress }, compareCode(code, art.runtime, art.immRanges));
+  }
+  if (step.id === 'S1') {
+    const tx = (await rpc('eth_getTransactionByHash', [rec.hash])).result;
+    rec.planHashOnchain = tx ? tx.input : null;
+  }
+  rec.match = judge(rec, step);
+  await save(rec); render();
+  const res = resultText(rec);
+  banner(`${rec.step}  ${rec.label}\nexpected ${rec.expected}\ngot      ${res}\nblock ${group(String(rec.receipt.blockNumber))}, ${rec.blockTimeUtc} UTC   ${rec.match ? 'MATCH' : 'MISMATCH'}`, rec.match ? 'ok' : 'bad');
+  if (!rec.match) { holdAfterMismatch = true; $('ack').style.display = ''; }
+}
+function judge(rec, step) {
+  const x = step.expect;
+  if (rec.receipt.status !== x.status) return false;
+  if (x.status === 0) {
+    const e = rec.replay && rec.replay.error; if (!e) return false;
+    return e.name === x.error.name && argsEqual(x.error.args, e.args);
+  }
+  const ok = (x.events || []).every(want => rec.events.some(gotE => gotE.name === want.name && argsEqual(want.args, gotE.args) &&
+    lc(gotE.emitter) === lc(want.name === 'AllowlistSet' ? S.module : S.token)));
+  if (!ok) return false;
+  if (step.kind === 'deploy') return !!(S.b0[step.what + 'Testnet'] && S.b0[step.what + 'Testnet'].same);
+  if (step.id === 'S1') return lc(rec.planHashOnchain || '') === lc('0x' + C.planHash);
+  return true;
+}
+function resultText(rec) {
+  if (rec.void) return 'void (' + rec.void + ')';
+  if (!rec.receipt) return 'pending';
+  if (rec.receipt.status === 0) return 'failed tx: ' + (rec.replay ? rec.replay.decoded : '?');
+  if (rec.receipt.contractAddress) return 'success: deployed at ' + short(rec.receipt.contractAddress);
+  const evs = (rec.events || []).filter(e => e.name !== 'unknown event').map(e => e.text);
+  return 'success' + (evs.length ? ': ' + evs.join(' + ') : '');
+}
+function compareCode(onchain, compiled, ranges) {
+  const a = (onchain || '').replace(/^0x/, '').toLowerCase(), b = compiled.replace(/^0x/, '').toLowerCase();
+  if (a.length !== b.length) return { same: false, note: `length differs (${a.length / 2} vs ${b.length / 2} bytes)` };
+  const mask = new Uint8Array(b.length / 2); for (const [st, len] of ranges) for (let i = st; i < st + len; i++) mask[i] = 1;
+  let diff = 0, inside = 0; for (let i = 0; i < b.length / 2; i++) { if (a.substr(2 * i, 2) !== b.substr(2 * i, 2)) { if (mask[i]) inside++; else diff++; } }
+  return { same: diff === 0, bytes: b.length / 2, immutableRanges: ranges.length, bytesDifferentOutsideImmutables: diff, bytesDifferentInsideImmutables: inside };
+}
+
+// ───────────── UI ─────────────
+function banner(t, cls) { const b = $('banner'); b.textContent = t; b.className = cls || ''; }
+function render() {
+  // contracts
+  const parts = [];
+  if (S.module) parts.push(`TestAllowlistModule <a href="${C.explorer}/address/${S.module}" target="_blank">${S.module}</a>`);
+  if (S.token) parts.push(`CompliantERC20 ${C.token.symbol} <a href="${C.explorer}/address/${S.token}" target="_blank">${S.token}</a>`);
+  $('contracts').innerHTML = parts.length ? parts.join('<br>') : 'contracts: not deployed yet';
+  const b0 = [];
+  const line = (lbl, r) => r ? `${lbl}: <span class="${r.same ? 'ok' : 'bad'}">${r.same ? 'identical' : 'DIFFERENT'}</span> <span class="dim">outside ${r.immutableRanges} immutable ranges (${group(String(r.bytes))} bytes, ${r.bytesDifferentOutsideImmutables} bytes differ outside)</span>` : '';
+  if (S.b0.nf01Mainnet) b0.push(line(`B0a NF01 on mainnet (block ${group(String(S.b0.nf01Mainnet.block))}) vs compiled verified source`, S.b0.nf01Mainnet));
+  if (S.b0.tokenTestnet) b0.push(line('B0b testnet W3GT vs the same compiled code', S.b0.tokenTestnet));
+  if (S.b0.moduleTestnet) b0.push(line('Test module on testnet vs its compiled code', S.b0.moduleTestnet));
+  $('b0').innerHTML = b0.join('<br>');
+  // next
+  const st = nextStep();
+  if (st) {
+    $('nextId').textContent = st.id; $('nextLabel').textContent = st.label;
+    $('nextDetail').textContent = `sender W3 ${st.sender} | expected ${expText(st)}` + (st.gas ? ` | gas limit ${group(String(st.gas))}` : '');
+  } else { $('nextId').textContent = 'done'; $('nextLabel').textContent = 'all 47 steps recorded'; $('nextDetail').textContent = ''; }
+  $('run').disabled = busy || !st || holdAfterMismatch || !connected;
+  // rows
+  $('rows').innerHTML = S.records.slice().reverse().map(r => {
+    const link = r.hash ? `<a href="${C.explorer}/tx/${r.hash}" target="_blank">${short(r.hash)}</a>` : '';
+    const m = r.void ? '<span class="dim">void</span>' : (r.receipt ? (r.match ? '<span class="ok">MATCH</span>' : '<span class="bad">MISMATCH</span>') : '');
+    return `<tr><td>${r.step}</td><td>${r.sender}</td><td>${r.label}</td><td>${r.expected}</td><td>${resultText(r)}</td><td>${r.receipt ? group(String(r.receipt.blockNumber)) : ''}</td><td>${r.blockTimeUtc || ''}</td><td>${link}</td><td>${m}</td></tr>`;
+  }).join('');
+  // summary per test
+  const tests = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'];
+  $('summary').innerHTML = tests.map(t => {
+    const recs = S.records.filter(r => r.test === t && r.kind === 'test' && r.receipt && !r.void);
+    const ok = recs.filter(r => r.match).length;
+    return `<span>${t} <span class="${recs.length && ok === recs.length ? 'ok' : (recs.length ? 'bad' : 'dim')}">${ok}/${recs.length}</span></span>`;
+  }).join(' ') + `<span class="dim"> &nbsp;void: ${S.records.filter(r => r.void).length}</span>`;
+}
+let connected = false;
+async function connect(silent) {
+  if (!window.ethereum) { if (!silent) banner('MetaMask not found in this browser.', 'bad'); return; }
+  try {
+    const before = (await window.ethereum.request({ method: 'eth_accounts' })).map(lc);
+    const permitted = before.includes(lc(W.Issuer)) && before.includes(lc(W.Investor));
+    if (!permitted) {
+      if (silent) return;
+      try { await window.ethereum.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] }); }
+      catch (e) { if (e && e.code === 4001) throw e; await window.ethereum.request({ method: 'eth_requestAccounts' }); }
+    }
+    let cid = await window.ethereum.request({ method: 'eth_chainId' });
+    if (lc(cid) !== C.chainIdHex) {
+      try { await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: C.chainIdHex }] }); } catch (e) { }
+      cid = await window.ethereum.request({ method: 'eth_chainId' });
+    }
+    const accs = (await window.ethereum.request({ method: 'eth_accounts' })).map(lc);
+    let all = true;
+    for (const k of ['Issuer', 'Investor', 'Outsider']) {
+      const has = accs.includes(lc(W[k])); if (!has && k !== 'Outsider') all = false;
+      $('con-' + k).innerHTML = has ? '<span class="ok">connected</span>' : (k === 'Outsider' ? '<span class="dim">(never sends)</span>' : '<span class="bad">not connected</span>');
+    }
+    const extra = accs.filter(a => !roleOf(a)).length;
+    $('extra').innerHTML = extra ? `<span class="bad">${extra} other account(s) connected. Disconnect them in MetaMask.</span>` : '';
+    const netOk = lc(cid) === C.chainIdHex;
+    $('net').innerHTML = netOk ? '<span class="ok">Rayls Testnet</span>' : '<span class="bad">wrong network in MetaMask</span>';
+    connected = netOk && all && extra === 0;
+    await balances(); await refreshAcc(); render();
+    if (window.ethereum.on && !connect.hooked) { connect.hooked = true; window.ethereum.on('accountsChanged', () => refreshAcc()); window.ethereum.on('chainChanged', () => location.reload()); }
+    if (!connected) banner('Connect W3 Issuer and W3 Investor (only the W3 accounts) on Rayls Testnet.', 'bad'); else banner('Ready.');
+  } catch (e) { banner('Connection failed: ' + (e.message || e.code), 'bad'); }
+}
+async function balances() {
+  for (const k of ['Issuer', 'Investor', 'Outsider']) {
+    const r = await rpc('eth_getBalance', [W[k], 'latest']);
+    if (r.result) $('bal-' + k).textContent = fmtUnits(BigInt(r.result), 18) + ' USDr';
+  }
+}
+async function endState() {
+  if (!S.token || nextStep()) { $('endstate').innerHTML = ''; return; }
+  const T = S.token, sel = C.sel; const bnHex = (await rpc('eth_blockNumber', [])).result;
+  const got = { block: Number(BigInt(bnHex)) };
+  for (const k of ['Investor', 'Issuer', 'Outsider']) got[k] = await readU(T, call(sel['balanceOf(address)'], encAddr(W[k])), bnHex);
+  got.totalSupply = await readU(T, call(sel['totalSupply()']), bnHex);
+  got.paused = await readB(T, call(sel['paused()']), bnHex);
+  got.frozenInvestor = await readU(T, call(sel['getFrozenTokens(address,uint256)'], encAddr(W.Investor), encUint(0)), bnHex);
+  got.outsiderAllowlisted = await readB(S.module, call(sel['isAllowlisted(address)'], encAddr(W.Outsider)), bnHex);
+  const want = { Investor: 991n * U1, Issuer: 6n * U1, Outsider: 3n * U1, totalSupply: 1000n * U1, paused: false, frozenInvestor: 0n, outsiderAllowlisted: false };
+  const ok = Object.keys(want).every(k => norm(want[k]) === norm(got[k]));
+  S.endState = Object.assign({ match: ok }, got); await save();
+  $('endstate').innerHTML = `End state at block ${group(String(got.block))}: Investor ${fmtUnits(got.Investor, 6)}, Issuer ${fmtUnits(got.Issuer, 6)}, Outsider ${fmtUnits(got.Outsider, 6)} W3GT, supply ${fmtUnits(got.totalSupply, 6)}, paused ${got.paused}, frozen ${fmtUnits(got.frozenInvestor, 6)}, Outsider allowlisted ${got.outsiderAllowlisted} <span class="${ok ? 'ok' : 'bad'}">${ok ? 'MATCH (plan: 991 / 6 / 3 / 1,000)' : 'MISMATCH'}</span>`;
+}
+async function runNext() {
+  if (busy) return; busy = true; render();
+  try {
+    const p = pendingRecord();
+    if (p) await finish(p, STEPS.find(s => s.id === p.step));
+    else { const st = nextStep(); if (st) await runStep(st); }
+    await balances(); await endState();
+  } catch (e) { banner('Error: ' + (e.message || e), 'bad'); }
+  busy = false; render();
+}
+async function b0a() {
+  const bn = (await rpc('eth_blockNumber', [], '/rpc-mainnet')).result;
+  const r = await rpc('eth_getCode', [C.nf01.address, bn], '/rpc-mainnet');
+  if (!r.result) { banner('Mainnet read failed: ' + JSON.stringify(r.error || r), 'bad'); return; }
+  S.b0.nf01Mainnet = Object.assign({ address: C.nf01.address, block: Number(BigInt(bn)) }, compareCode(r.result, C.token.runtime, C.token.immRanges));
+  await save(); render();
+}
+function download() {
+  const blob = new Blob([JSON.stringify(S, replacer, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'bench-log.json'; a.click();
+}
+setInterval(() => { $('clock').textContent = nowUtc() + ' UTC'; }, 500);
+$('connect').onclick = () => connect(false); $('run').onclick = runNext; $('dl').onclick = download; $('b0a').onclick = () => b0a().catch(e => banner('B0a error: ' + e.message, 'bad'));
+$('ack').onclick = () => { holdAfterMismatch = false; $('ack').style.display = 'none'; render(); };
+$('wallets').innerHTML = ['Issuer', 'Investor', 'Outsider'].map(k => `<span class="w"><b>W3 ${k}</b> <span class="dim">${short(W[k])}</span> <span id="bal-${k}" class="dim"></span> <span id="con-${k}"></span></span>`).join('');
+(async () => {
+  try { const r = await fetch('/log'); const j = await r.json(); if (j && j.format === 'w3-bench-log-1') S = j; } catch (e) { }
+  render(); await connect(true); await endState();
+})();
+</script>
+</body>
+</html>

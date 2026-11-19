@@ -1,0 +1,17 @@
+{
+  "name": "rayls-tokenone-vault-gates",
+  "private": true,
+  "description": "Who can buy into TokenOne's pilot vault on the Rayls Public Chain? Test bench, checker and tamper tests.",
+  "scripts": {
+    "check": "node checker/check.js --log results/bench-log.json",
+    "tamper": "node checker/tamper.js --log results/bench-log.json"
+  },
+  "dependencies": {
+    "ethers": "6.17.0",
+    "solc": "0.8.24"
+  },
+  "devDependencies": {
+    "hardhat": "2.29.2",
+    "jsdom": "31.0.1"
+  }
+}
