@@ -44,12 +44,13 @@ function fail(where, msg) { problems.push(`${where}: ${msg}`); lines.push(`  FAI
 // ───────── JSON-RPC ─────────
 let rid = 0;
 async function rpc(url, method, params) {
-  for (let attempt = 0; attempt < 4; attempt++) {
+  // Retries only when the endpoint gives no JSON answer (network error, rate limit page); a JSON-RPC error is returned as is.
+  for (let attempt = 0; attempt < 7; attempt++) {
     try {
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: ++rid, method, params }) });
-      const j = await r.json();
-      return j;
-    } catch (e) { if (attempt === 3) throw e; await new Promise(r => setTimeout(r, 1500)); }
+      const text = await r.text();
+      return JSON.parse(text);
+    } catch (e) { if (attempt === 6) throw e; await new Promise(r => setTimeout(r, 1000 * 2 ** attempt)); }
   }
 }
 async function rpcResult(url, method, params) { const j = await rpc(url, method, params); if (j.error) throw new Error(`${method}: ${j.error.message}`); return j.result; }

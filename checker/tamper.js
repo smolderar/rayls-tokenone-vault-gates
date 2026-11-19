@@ -34,12 +34,18 @@ console.log(`tamper tests | ${cases.length} edited copies of ${path.basename(LOG
 cases.forEach(([name, edit], i) => {
   const copy = JSON.parse(JSON.stringify(base)); edit(copy);
   const f = path.join(dir, `tampered-${i + 1}.json`); fs.writeFileSync(f, JSON.stringify(copy, null, 1));
-  const r = spawnSync(process.execPath, [path.join(__dirname, 'check.js'), '--log', f, '--rpc', RPC, '--skip-mainnet', '--no-write', '--quiet'], { encoding: 'utf8' });
+  let r;
+  for (let attempt = 0; attempt < 3; attempt++) {   // exit code 2 = the checker could not finish (RPC problem), not a verdict
+    r = spawnSync(process.execPath, [path.join(__dirname, 'check.js'), '--log', f, '--rpc', RPC, '--skip-mainnet', '--no-write', '--quiet'], { encoding: 'utf8' });
+    if (r.status !== 2) break;
+    spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 15000)']);
+  }
   const out = (r.stdout || '') + (r.stderr || '');
   const first = (out.split('\n').find(x => x.includes('FAIL ')) || out.split('\n').find(x => x.trim()) || '').trim().replace(/^FAIL /, '');
   const rejected = r.status === 1;
   if (!rejected) allRejected = false;
   rows.push({ n: i + 1, edit: name, file: `tampered-${i + 1}.json`, rejected, exitCode: r.status, reason: first });
+  spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 3000)']);   // be gentle with the public RPC
   console.log(`${String(i + 1).padStart(2)}. ${name.padEnd(48)} ${rejected ? 'REJECTED' : 'NOT REJECTED'}  ${first.slice(0, 80)}`);
 });
 const ok = allRejected;
