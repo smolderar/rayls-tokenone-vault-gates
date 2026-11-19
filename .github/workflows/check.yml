@@ -1,0 +1,85 @@
+name: check
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  rebuild:
+    name: Rebuild contracts and bench page from source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Compile CompliantERC20 (NF01 verified source) and TestAllowlistModule with solc 0.8.24
+        run: |
+          node bench/tools/compile_nf01.js source/contract-0x36f480c489f4cf6aacf91c7605504a840060e376.json /tmp/CompliantERC20.json
+          node bench/tools/compile_module.js source/contract-0x36f480c489f4cf6aacf91c7605504a840060e376.json /tmp/TestAllowlistModule.json
+          cmp /tmp/CompliantERC20.json build/CompliantERC20.json
+          cmp /tmp/TestAllowlistModule.json build/TestAllowlistModule.json
+      - name: Rebuild bench/index.html and compare byte for byte
+        run: |
+          node bench/tools/build_page.js /tmp/index.html
+          cmp /tmp/index.html bench/index.html
+          sha256sum bench/index.html W3-PLAN.md W3-PLAN-ADDENDUM-1.md W3-PLAN-ADDENDUM-2.md
+
+  checker:
+    name: Checker on ${{ matrix.os }} (testnet RPC + local re-execution)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node checker/check.js --log results/bench-log.json --out ci-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: checker-results-${{ matrix.os }}
+          path: ci-results
+
+  tamper:
+    name: Tamper tests (edited logs must be rejected)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node checker/tamper.js --log results/bench-log.json --out ci-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tamper-results
+          path: ci-results
+
+  bench-page-offline:
+    name: Bench page logic on a local EVM (47 steps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Start a local chain with chain ID 7295799
+        working-directory: bench/test
+        run: |
+          npx hardhat node --port 8545 > /tmp/node.log 2>&1 &
+          for i in $(seq 1 30); do curl -s -X POST -H 'Content-Type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' http://127.0.0.1:8545 && break; sleep 1; done
+      - name: Run the page with a stand-in wallet, then check it with the same checker
+        env:
+          REJECT_AT: '99'
+          OUT_LOG: /tmp/local-log.json
+        run: |
+          node bench/test/run_page_test.js source/contract-0x36f480c489f4cf6aacf91c7605504a840060e376.json
+          node checker/check.js --log /tmp/local-log.json --rpc http://127.0.0.1:8545 --skip-mainnet --no-write
