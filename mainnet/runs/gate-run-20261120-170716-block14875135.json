@@ -1,0 +1,56 @@
+﻿{
+    "block":  14875135,
+    "blockTimeUtc":  "2026-11-20 17:06:59",
+    "A1_outsiderIsAllowed":  false,
+    "A2_outsiderRequest":  "AddressNotAllowed",
+    "A3_control":  "0x4d76...7e22",
+    "A4_controlRequest":  "ERC20InsufficientAllowance",
+    "A5":  {
+               "version":  "v0.6.0",
+               "paused":  false,
+               "totalAssets":  "255281489244936737801840",
+               "totalSupply":  "255121975868337932093737",
+               "assetsPerShare":  "1000625243576355517",
+               "maxCap":  "300000000000000000000000",
+               "syncMode":  "SyncDeposit",
+               "feeRatesBps":  [
+                                   0,
+                                   0,
+                                   0,
+                                   50,
+                                   0
+                               ]
+           },
+    "A6":  {
+               "additions":  11,
+               "removals":  1
+           },
+    "A7":  [
+               {
+                   "timeUtc":  "2026-11-19 13:00:16",
+                   "epoch":  1,
+                   "assetsDeposited":  "1000000000000000000"
+               },
+               {
+                   "timeUtc":  "2026-11-19 15:09:21",
+                   "epoch":  3,
+                   "assetsDeposited":  "99924879672000000000000"
+               },
+               {
+                   "timeUtc":  "2026-11-20 15:12:23",
+                   "epoch":  5,
+                   "assetsDeposited":  "155345599318000000000000"
+               }
+           ],
+    "A8":  {
+               "safe":  "0x94bd...7892",
+               "fundTotalAssets":  "255291537168592258157777",
+               "idle":  "255281482990000000000000",
+               "deployedCapital":  "10054178592258157777",
+               "sumExact":  true,
+               "brlHeldByFund":  "255281482990000000000000",
+               "reportedAtUtc":  "2026-11-20 11:46:10",
+               "maxReportAgeS":  86400,
+               "maxReportDeviationBps":  1000
+           }
+}

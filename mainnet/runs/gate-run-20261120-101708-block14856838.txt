@@ -1,0 +1,38 @@
+﻿Lagoon vault RLSTKONE02 gate check | Rayls Public Chain mainnet | read-only
+Block 14,856,838 | block time 2026-11-20 10:16:53 UTC | every call reads this block
+Run started 2026-11-20 10:16:56 UTC
+
+ENTRY GATE (simulated requestDeposit of 1 wei BRL1.p, owner = controller = sender)
+  A1 W3 Outsider 0xe892...bf47: isAllowed = false
+  A2 W3 Outsider request: REVERTS AddressNotAllowed (0x51ee5ed5), address in the error 0xe892...bf47
+  A3 control wallet 0x4d76...7e22 (first whitelisted address still allowed): isAllowed = true
+  A4 control wallet request: passes the gate, then REVERTS ERC20InsufficientAllowance (0xfb8f41b2)
+
+VAULT STATE
+  A5 version v0.6.0 | paused false | owner 0x73b1...c282
+     totalAssets 99,935.889926 BRL1.p | totalSupply 99,873.444697 shares | assets per share 1.000625
+     maxCap 300,000.000000 BRL1.p | syncMode 1 = SyncDeposit
+     fee rates (bps): management 0, performance 0, entry 0, exit 50, haircut 0
+
+WHITELIST HISTORY (WhitelistUpdated, blocks 14,731,249 to 14,856,838)
+  A6 11 additions, 1 removals
+     2026-11-18 12:30:32 UTC added x1
+     2026-11-18 13:17:03 UTC added x1
+     2026-11-18 19:59:14 UTC removed x1
+     2026-11-18 20:04:22 UTC added x1
+     2026-11-19 12:55:33 UTC added x1
+     2026-11-19 12:55:41 UTC added x6
+     2026-11-19 14:08:23 UTC added x1
+
+DEPOSIT SETTLEMENTS (SettleDeposit)
+  A7 2026-11-19 13:00:16 UTC | epoch 1 | assets deposited 1.000000 BRL1.p
+  A7 2026-11-19 15:09:21 UTC | epoch 3 | assets deposited 99,924.879672 BRL1.p
+
+MONEY PATH (vault -> its Safe -> TokenOne fund TKONE02)
+  A8 vault Safe 0x94bd...7892 holds 99,569.327657 TKONE02 shares
+     TKONE02 totalAssets 99,945.937850 = idle 99,935.883672 + deployedCapital 10.054178
+     exact in base units: yes | BRL1.p held by TKONE02 99,935.883672
+     TKONE02 assets per share 1.003681 | deployedCapital reported at 2026-11-19 12:11:09 UTC
+     report guards: max age 86,400 s, max change 1,000 bps per report
+
+Read-only. Nothing was sent, nothing was signed.
