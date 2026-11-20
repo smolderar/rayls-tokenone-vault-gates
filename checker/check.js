@@ -315,6 +315,46 @@ async function main() {
     say(`  paused ${end.paused}, Investor frozen ${end.frozenInvestor}, Outsider allowlisted ${end.outsiderAllowlisted}, W3 Issuer holds all 4 roles, compliance module = ${who(end.compliance)}`);
   }
 
+  // post-run checks: a holder revoked while holding tokens (added 21 Nov 2026, after the run; read-only on the testnet,
+  // not part of the pre-registered plan). After round 3 the Outsider holds 3 W3GT and is no longer allowlisted (T8b).
+  const post = [];
+  if (addr.token) {
+    say('');
+    say('post-run checks (added 21 Nov 2026 after the run, not in the pre-registered plan): Outsider holds 3 W3GT, allowlist removed');
+    const decodeErr = d => { try { const e = errI.parseError(d); return e ? `${e.name}(${[...e.args].map(show).join(', ')})` : null; } catch (e) { return null; } };
+    const cases = [
+      { id: 'P1', from: 'Outsider', what: 'revoked holder sends 1 W3GT to Investor (transfer)', data: tokI.encodeFunctionData('transfer', [W.Investor, U1]), want: `CannotTransfer(${show(W.Outsider)}, ${show(W.Investor)}, 0, ${U1})` },
+      { id: 'P2', from: 'Issuer', what: 'enforcer moves the 3 W3GT to Investor (forcedTransfer)', data: tokI.encodeFunctionData('forcedTransfer', [W.Outsider, W.Investor, 3n * U1]), want: 'success' },
+      { id: 'P3', from: 'Issuer', what: 'control: forcedTransfer from Investor to the revoked Outsider', data: tokI.encodeFunctionData('forcedTransfer', [W.Investor, W.Outsider, U1]), want: `CannotReceive(${show(W.Outsider)})` },
+    ];
+    for (const c of cases) {
+      const call = { from: W[c.from], to: addr.token, data: c.data, gas: '0x30d40' };
+      const on = await rpc(RPC, 'eth_call', [call, lbn]);
+      const onRes = on.error ? (decodeErr(revertDataOf(on.error)) || 'reverted, no decodable data') : 'success';
+      let loRes;
+      try { await local('eth_call', [call, 'latest']); loRes = 'success'; } catch (e) { loRes = decodeErr(revertDataOf(e)) || 'reverted, no decodable data'; }
+      const ok = onRes === c.want && loRes === c.want;
+      if (!ok) fail(c.id, `testnet ${onRes}, local ${loRes}, expected ${c.want}`);
+      post.push({ id: c.id, sender: c.from, what: c.what, testnet: onRes, local: loRes, expected: c.want, ok });
+      say(`${c.id}  ${c.from.padEnd(9)} ${c.what.padEnd(62)} testnet: ${onRes.padEnd(48)} local: ${loRes.padEnd(48)} ${ok ? 'OK' : 'FAIL'}`);
+    }
+    // P2 executed on the local copy only, then rolled back: what the recovery would leave behind
+    const snap = await local('evm_snapshot', []);
+    try {
+      const h = await local('eth_sendTransaction', [{ from: W.Issuer, to: addr.token, data: cases[1].data, gas: '0x30d40' }]);
+      const r = await local('eth_getTransactionReceipt', [h]);
+      const ev = r.logs.map(l => { try { const q = tokI.parseLog(l); return `${q.name}(${[...q.args].map(show).join(', ')})`; } catch (e) { return '?'; } }).join(' + ');
+      const bal = async a => BigInt(await local('eth_call', [{ to: addr.token, data: tokI.encodeFunctionData('balanceOf', [a]) }, 'latest']));
+      const after = { Outsider: await bal(W.Outsider), Investor: await bal(W.Investor) };
+      const ok = Number(BigInt(r.status)) === 1 && after.Outsider === 0n && after.Investor === 994n * U1;
+      if (!ok) fail('P2 local', `status ${Number(BigInt(r.status))}, Outsider ${after.Outsider}, Investor ${after.Investor}`);
+      post.push({ id: 'P2-local', events: ev, outsiderAfter: after.Outsider, investorAfter: after.Investor, ok });
+      say(`P2 executed on the local copy, then rolled back: ${ev}; Outsider ${Number(ethers.formatUnits(after.Outsider, 6)).toLocaleString('en-US')}, Investor ${Number(ethers.formatUnits(after.Investor, 6)).toLocaleString('en-US')} W3GT ${ok ? 'OK' : 'FAIL'}`);
+    } finally { await local('evm_revert', [snap]); }
+  }
+
+  if (post.length) say(`post-run checks: ${post.filter(x => x.ok).length} of ${post.length} as expected`);
+
   // per-test tally
   say('');
   say('tests: ' + ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'].map(t => `${t} ${(testTally[t] || { ok: 0 }).ok}/${(testTally[t] || { n: 0 }).n}`).join('  '));
@@ -325,7 +365,7 @@ async function main() {
   if (!flag('--no-write')) {
     fs.mkdirSync(OUT, { recursive: true });
     const res = { checkerRunUtc: startedUtc, rpc: RPC, planSha256: planHash, log: path.basename(LOG), pass, problems, voids: voids.map(v => ({ step: v.step, atUtc: v.voidAtUtc, to: v.to, reason: v.void })),
-      rows, code, b0a, endState: end, tests: testTally };
+      rows, code, b0a, endState: end, tests: testTally, postRunChecks: post };
     fs.writeFileSync(path.join(OUT, 'check-results.json'), JSON.stringify(res, (k, v) => typeof v === 'bigint' ? v.toString() : v, 1));
     const md = ['# Checker result', '', `Run ${startedUtc} UTC. Testnet RPC ${RPC}. Plan SHA-256 ${planHash}.`, '', `**${pass ? 'PASS' : 'FAIL'}**`, '',
       '| Step | Sender | Action | Testnet | Re-executed locally | Gas (testnet = local) | Plan | Block | Block time (UTC) | Tx |', '|---|---|---|---|---|---|---|---|---|---|',
