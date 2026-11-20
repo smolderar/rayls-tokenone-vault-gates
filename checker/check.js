@@ -320,7 +320,13 @@ async function main() {
   const post = [];
   if (addr.token) {
     say('');
-    say('post-run checks (added 21 Nov 2026 after the run, not in the pre-registered plan): Outsider holds 3 W3GT, allowlist removed');
+    say('post-run checks: read-only eth_call simulations added on 21 Nov 2026, after the run; separate from the 47 mined, pre-registered transactions');
+    // pin: every simulation runs at the same testnet block as the end-state reads, and the state is checked at that block
+    const lAllow = modI.decodeFunctionResult('isAllowlisted', await local('eth_call', [{ to: addr.module, data: modI.encodeFunctionData('isAllowlisted', [W.Outsider]) }, 'latest']))[0];
+    const lBal = BigInt(await local('eth_call', [{ to: addr.token, data: tokI.encodeFunctionData('balanceOf', [W.Outsider]) }, 'latest']));
+    const stateOk = end.Outsider === 3n * U1 && end.outsiderAllowlisted === false && lBal === 3n * U1 && lAllow === false;
+    if (!stateOk) fail('post-run state', `testnet Outsider ${end.Outsider} allowlisted ${end.outsiderAllowlisted}; local ${lBal} allowlisted ${lAllow}`);
+    say(`  pinned testnet block ${fmt(end.block)}: Outsider balance ${Number(ethers.formatUnits(end.Outsider, 6))} W3GT, allowlisted ${end.outsiderAllowlisted} (local copy: ${Number(ethers.formatUnits(lBal, 6))} W3GT, allowlisted ${lAllow}) ${stateOk ? 'OK' : 'FAIL'}`);
     const decodeErr = d => { try { const e = errI.parseError(d); return e ? `${e.name}(${[...e.args].map(show).join(', ')})` : null; } catch (e) { return null; } };
     const cases = [
       { id: 'P1', from: 'Outsider', what: 'revoked holder sends 1 W3GT to Investor (transfer)', data: tokI.encodeFunctionData('transfer', [W.Investor, U1]), want: `CannotTransfer(${show(W.Outsider)}, ${show(W.Investor)}, 0, ${U1})` },
@@ -365,7 +371,7 @@ async function main() {
   if (!flag('--no-write')) {
     fs.mkdirSync(OUT, { recursive: true });
     const res = { checkerRunUtc: startedUtc, rpc: RPC, planSha256: planHash, log: path.basename(LOG), pass, problems, voids: voids.map(v => ({ step: v.step, atUtc: v.voidAtUtc, to: v.to, reason: v.void })),
-      rows, code, b0a, endState: end, tests: testTally, postRunChecks: post };
+      rows, code, b0a, endState: end, tests: testTally, postRunChecks: { block: end.block, method: 'eth_call at the pinned block (read-only), plus P2 executed on the local copy and rolled back', checks: post } };
     fs.writeFileSync(path.join(OUT, 'check-results.json'), JSON.stringify(res, (k, v) => typeof v === 'bigint' ? v.toString() : v, 1));
     const md = ['# Checker result', '', `Run ${startedUtc} UTC. Testnet RPC ${RPC}. Plan SHA-256 ${planHash}.`, '', `**${pass ? 'PASS' : 'FAIL'}**`, '',
       '| Step | Sender | Action | Testnet | Re-executed locally | Gas (testnet = local) | Plan | Block | Block time (UTC) | Tx |', '|---|---|---|---|---|---|---|---|---|---|',
