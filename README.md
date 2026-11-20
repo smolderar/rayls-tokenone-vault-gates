@@ -79,7 +79,7 @@ TokenOne's debenture token NF01 (`0x36f480c489F4cF6AAcF91C7605504a840060e376`) i
 
 ## Post-run checks: a holder removed from the allowlist (added 21 Nov 2026)
 
-Added after the run, so not part of the pre-registered plan. Read-only on the testnet. In every round the Outsider was allowlisted (T8a), received 1 W3GT (T8) and was removed again (T8b), so it ends holding 3 W3GT while not allowlisted. The checker simulates three calls against that end state, on the testnet RPC (`eth_call` at the latest block) and on its own local re-execution, and both must agree:
+Read-only `eth_call` simulations added after the run. They are separate from the 47 mined transactions and not part of the pre-registered plan. In every round the Outsider was allowlisted (T8a), received 1 W3GT (T8) and was removed again (T8b), so it ends holding 3 W3GT while not allowlisted. The checker pins one testnet block (the block of its end-state reads), confirms that at that block the Outsider holds 3 W3GT and is not allowlisted (on the testnet and on its local re-execution), then simulates three calls at that block on both, and both must agree:
 
 | Check | Call | Expected and seen |
 |---|---|---|
@@ -87,7 +87,7 @@ Added after the run, so not part of the pre-registered plan. Read-only on the te
 | P2 | Enforcer moves the 3 W3GT from Outsider to Investor (`forcedTransfer`) | success |
 | P3 | Control: enforcer's `forcedTransfer` from Investor to the Outsider | reverts CannotReceive(Outsider) |
 
-P2 is also executed on the local copy and rolled back: it emits Transfer(Outsider, Investor, 3000000) and ForcedTransfer(Outsider, Investor, 0, 3000000) and leaves Outsider 0, Investor 994 W3GT. So a revoked holder keeps its balance but cannot move it, and the enforcer can still recover it to an eligible wallet; the receiver check still applies. First run on GitHub Actions: run 44826994431, testnet blocks 24,750,157 (Ubuntu) and 24,750,215 (Windows).
+P2 is also executed on the local copy and rolled back: it emits Transfer(Outsider, Investor, 3000000) and ForcedTransfer(Outsider, Investor, 0, 3000000) and leaves Outsider 0, Investor 994 W3GT. So a revoked holder keeps its balance but cannot move it, and the enforcer can still recover it to an eligible wallet; the receiver check still applies. Pinned blocks in GitHub Actions run 44829607395: testnet block 24,752,234 (Ubuntu job) and 24,752,269 (Windows job), Outsider 3 W3GT and not allowlisted at both. Every later run pins its own block and checks the same state.
 
 Five attempts were never sent and are kept in the log as void: MetaMask refuses a transaction with data to one of its own accounts (19:41:05, 19:42:20, 19:59:43 UTC) and keeps the confirm button disabled for the zero address (cancelled 20:31:49 and 20:39:27 UTC). The two addenda record how the plan hash transaction was moved; the hash finally went to `0xa1ad...e323`, the first 20 bytes of the hash itself (tx `0xb75a6dbc...cabd2`).
 
