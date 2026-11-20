@@ -1,8 +1,8 @@
 # Rayls is permissionless. So who can actually buy into TokenOne's pilot vault?
 
-**Short answer (20 Nov 2026, UTC):** only wallets on the vault's onchain whitelist. A wallet that is not on it is stopped by the vault contract itself, at the first check of a deposit request, before any money moves. A whitelisted wallet passes that check and is stopped only by the next one (no funds approved). I saw the same answer at three mainnet blocks on 20 Nov 2026, hours apart.
+**Short answer (20 Nov 2026, UTC):** only wallets on the vault's onchain whitelist can request a deposit. A wallet that is not on it is stopped by the vault contract itself, at the first check of a deposit request, before any money moves. A whitelisted wallet passes that check and is stopped only by the next one (no funds approved). I saw the same answer at three mainnet blocks on 20 Nov 2026, hours apart.
 
-Behind the vault, TokenOne's fund contract values its shares as cash it holds (checkable onchain) plus capital its oracle reports. On 20 Nov 2026 at 17:06:59 UTC, 99.996% of that value was cash held in the contract, and the reported part sits behind two onchain guards.
+Behind the vault, TokenOne's fund contract values its shares as cash it holds (checkable onchain) plus capital its oracle reports. On 20 Nov 2026 at 17:06:59 UTC, 99.996% of that value was cash held in the contract, and the reported part sits behind two onchain limits.
 
 The token rules TokenOne writes into its contracts (allowlist module, freeze, pause, forced transfer) were tested on Rayls Testnet with TokenOne's own verified code: 8 tests, 3 rounds, 47 real transactions, every result as planned. An independent checker re-executes all 47 transactions on a fresh machine and rejects 8 edited copies of the log.
 
@@ -103,8 +103,9 @@ One correction of my own method: the first checker run flagged one mismatch, the
 ## Limits
 
 - Off-chain steps (identity check, how receivables are chosen, the redemption window) are taken from the announcement and cannot be verified onchain.
-- The vault's whitelist is managed by its operator, the vault is an upgradeable proxy, and the fund's admin can change its report guards. The gate is as strict as those roles.
-- deployedCapital is a reported number. Onchain I can check the report events and the guards (while capital is deployed, deposits and redemptions need a report younger than 24 hours; one report cannot change deployedCapital by more than 10% from the previous one), not the receivables behind it.
+- The vault's whitelist is managed by its operator, the vault is an upgradeable proxy, and the fund's admin can change its report limits. These rules are as strong as those roles.
+- deployedCapital is a reported number. Onchain I can check the report events and the two limits (a maximum report age of 24 hours and a maximum change of 10% per report), not the receivables behind it.
+- Scope: Part A covers the vault's deposit request on mainnet; Part B covers the token's transfer rules on testnet.
 - Part B uses my test module, not TokenOne's. Not tested: forced transfer while paused or frozen, burns, permit, role changes, the vault's redemption path.
 
 ## Reproduce
