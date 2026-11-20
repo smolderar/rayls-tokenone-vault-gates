@@ -1,0 +1,51 @@
+﻿{
+    "block":  14847573,
+    "blockTimeUtc":  "2026-11-20 06:48:53",
+    "A1_outsiderIsAllowed":  false,
+    "A2_outsiderRequest":  "AddressNotAllowed",
+    "A3_control":  "0x4d76...7e22",
+    "A4_controlRequest":  "ERC20InsufficientAllowance",
+    "A5":  {
+               "version":  "v0.6.0",
+               "paused":  false,
+               "totalAssets":  "99935889926936737860605",
+               "totalSupply":  "99873444697191320879532",
+               "assetsPerShare":  "1000625243576355518",
+               "maxCap":  "300000000000000000000000",
+               "syncMode":  "SyncDeposit",
+               "feeRatesBps":  [
+                                   0,
+                                   0,
+                                   0,
+                                   50,
+                                   0
+                               ]
+           },
+    "A6":  {
+               "additions":  11,
+               "removals":  1
+           },
+    "A7":  [
+               {
+                   "timeUtc":  "2026-11-19 13:00:16",
+                   "epoch":  1,
+                   "assetsDeposited":  "1000000000000000000"
+               },
+               {
+                   "timeUtc":  "2026-11-19 15:09:21",
+                   "epoch":  3,
+                   "assetsDeposited":  "99924879672000000000000"
+               }
+           ],
+    "A8":  {
+               "safe":  "0x94bd...7892",
+               "fundTotalAssets":  "99945937850592258157777",
+               "idle":  "99935883672000000000000",
+               "deployedCapital":  "10054178592258157777",
+               "sumExact":  true,
+               "brlHeldByFund":  "99935883672000000000000",
+               "reportedAtUtc":  "2026-11-19 12:11:09",
+               "maxReportAgeS":  86400,
+               "maxReportDeviationBps":  1000
+           }
+}
