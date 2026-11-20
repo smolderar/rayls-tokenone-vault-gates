@@ -1,10 +1,10 @@
-# Rayls is permissionless. So who can actually buy into TokenOne's pilot vault?
+# Can anyone buy into a tokenized fund on a permissionless blockchain? TokenOne's pilot vault on Rayls
 
-**Short answer (20 Nov 2026, UTC):** only wallets on the vault's onchain whitelist can request a deposit. A wallet that is not on it is stopped by the vault contract itself, at the first check of a deposit request, before any money moves. A whitelisted wallet passes that check and is stopped only by the next one (no funds approved). I saw the same answer at three mainnet blocks on 20 Nov 2026, hours apart.
+**Short answer (20 Nov 2026, UTC):** only wallets on the vault's onchain whitelist can request a deposit. A wallet that is not on it is stopped by the vault contract itself, at the first check of a deposit request, before any money moves. A whitelisted wallet passes that check and is stopped only by the next one (ERC20InsufficientAllowance: no token allowance approved). I saw the same answer at three mainnet blocks on 20 Nov 2026, hours apart.
 
-Behind the vault, TokenOne's fund contract values its shares as cash it holds (checkable onchain) plus capital its oracle reports. On 20 Nov 2026 at 17:06:59 UTC, 99.996% of that value was cash held in the contract, and the reported part sits behind two onchain limits.
+Behind the vault, TokenOne's fund contract values its shares as the BRL1.p it holds (checkable onchain) plus capital its oracle reports. On 20 Nov 2026 at 17:06:59 UTC, day two of the pilot, 99.996% of that value was BRL1.p held in the contract, and the reported part (10.054178 BRL1.p) sits behind two onchain limits. This is a dated token-balance reading: it does not verify BRL1's own reserves or the receivables behind the reported capital.
 
-The token rules TokenOne writes into its contracts (allowlist module, freeze, pause, forced transfer) were tested on Rayls Testnet with TokenOne's own verified code: 8 tests, 3 rounds, 47 real transactions, every result as planned. An independent checker re-executes all 47 transactions on a fresh machine and rejects 8 edited copies of the log.
+The token rules TokenOne writes into its contracts (allowlist module, freeze, pause, forced transfer) were tested on Rayls Testnet with TokenOne's own verified code: 47 real transactions (5 setup transactions, then 3 rounds of 14 steps covering 8 tests), every result as planned. An independent checker reads all 47 again from the testnet RPC and re-executes them on a fresh machine; separately, it rejects 8 edited copies of the saved log. A read-only check added after the run shows that a holder removed from the allowlist cannot move its tokens, while the enforcer can still recover them.
 
 Read-only on mainnet. Nothing was deposited. Every testnet transaction was sent by me from fresh test wallets.
 
@@ -75,17 +75,31 @@ TokenOne's debenture token NF01 (`0x36f480c489F4cF6AAcF91C7605504a840060e376`) i
 | T7 | forcedTransfer to a wallet not allowlisted | failed tx, CannotReceive(Outsider) |
 | T8 | T2 again with the Outsider allowlisted | success |
 
-47 transactions were mined: 32 succeeded and 15 were mined as failed transactions with the planned error, which is the onchain evidence for each rejection. End state: Investor 991, Issuer 6, Outsider 3 W3GT, supply 1,000, as planned.
+47 transactions were mined: 5 setup transactions (S1 to S5), then 3 rounds of 14 steps (the 8 tests T1 to T8 plus their setup and reset steps, for example T4a freeze and T4b unfreeze). 32 succeeded and 15 were mined as failed transactions with the planned error, which is the onchain evidence for each rejection. End state: Investor 991, Issuer 6, Outsider 3 W3GT, supply 1,000, as planned.
+
+## Post-run checks: a holder removed from the allowlist (added 21 Nov 2026)
+
+Added after the run, so not part of the pre-registered plan. Read-only on the testnet. In every round the Outsider was allowlisted (T8a), received 1 W3GT (T8) and was removed again (T8b), so it ends holding 3 W3GT while not allowlisted. The checker simulates three calls against that end state, on the testnet RPC (`eth_call` at the latest block) and on its own local re-execution, and both must agree:
+
+| Check | Call | Expected and seen |
+|---|---|---|
+| P1 | Outsider sends 1 W3GT to Investor (`transfer`) | reverts CannotTransfer(Outsider, Investor, 0, 1000000) |
+| P2 | Enforcer moves the 3 W3GT from Outsider to Investor (`forcedTransfer`) | success |
+| P3 | Control: enforcer's `forcedTransfer` from Investor to the Outsider | reverts CannotReceive(Outsider) |
+
+P2 is also executed on the local copy and rolled back: it emits Transfer(Outsider, Investor, 3000000) and ForcedTransfer(Outsider, Investor, 0, 3000000) and leaves Outsider 0, Investor 994 W3GT. So a revoked holder keeps its balance but cannot move it, and the enforcer can still recover it to an eligible wallet; the receiver check still applies. First run on GitHub Actions: run 44826994431, testnet blocks 24,750,157 (Ubuntu) and 24,750,215 (Windows).
 
 Five attempts were never sent and are kept in the log as void: MetaMask refuses a transaction with data to one of its own accounts (19:41:05, 19:42:20, 19:59:43 UTC) and keeps the confirm button disabled for the zero address (cancelled 20:31:49 and 20:39:27 UTC). The two addenda record how the plan hash transaction was moved; the hash finally went to `0xa1ad...e323`, the first 20 bytes of the hash itself (tx `0xb75a6dbc...cabd2`).
 
 ## Checker and tamper tests
 
+Two kinds of checks, kept apart: a fresh reconstruction from chain data (the checker reads every transaction, receipt, block and contract code again from the testnet RPC and re-executes everything locally), and checks of the saved log (the tamper tests show that edits to the saved log are caught).
+
 `checker/check.js` recompiles both contracts from source, reads every logged transaction and receipt again from the testnet RPC, checks it against the plan (sender, target, function, arguments) and against the saved log, then re-executes all 47 transactions in order on a fresh local EVM with the same senders and nonces. Status, gas used, events and deployed code must be identical. Revert data comes from that re-execution, so no archive node is needed.
 
 `checker/tamper.js` first requires the untouched log to pass, then edits 8 copies (a status, a hash, a revert, a gas value, a deleted record, a block time, the plan hash, a dropped event). All 8 are rejected.
 
-GitHub Actions run with all five jobs green: https://github.com/smolderar/rayls-tokenone-vault-gates/actions/runs/44635825447
+GitHub Actions runs all five jobs on every push. The run shown in the video, all jobs green: https://github.com/smolderar/rayls-tokenone-vault-gates/actions/runs/44635825447 . Later commits (README, post-run checks) are on the Actions page.
 
 One correction of my own method: the first checker run flagged one mismatch, the plan hash transaction used 22,280 gas on Rayls Testnet but 21,512 in my local EVM. 22,280 is 21,000 + 10 x 128, the calldata floor of EIP-7623 (Prague rules) for 32 non-zero bytes. My local EVM ran the older Cancun rules. With Prague rules all 47 match. The Windows job also failed once because Git changed the plan file's line endings; the workflow now keeps bytes exact.
 
@@ -95,8 +109,9 @@ One correction of my own method: the first checker run flagged one mismatch, the
 |---|---|---|---|
 | A wallet off the whitelist cannot request a deposit | `mainnet/runs/*.txt` A1, A2 | the vault contract rejects it at three blocks | anything about off-chain KYC |
 | The rejection comes from the whitelist | A3, A4 plus the verified Lagoon source | same call passes the gate from an allowed wallet | who decides whitelisting or why |
-| Fund value = held cash + reported capital | A8, verified RwaVaultV3 source | the sum is exact and the cash part matches BRL1.p's own record | that the reported capital exists off chain |
+| Fund value = BRL1.p held + reported capital | A8, verified RwaVaultV3 source | the sum is exact and the held part matches BRL1.p's own record | that the reported capital exists off chain, or BRL1's own reserves |
 | TokenOne's token code maps each rule to its own error | `results/bench-log.json`, checker output | 24 test transactions (8 tests x 3 rounds) behave as planned | TokenOne's production module rules |
+| A revoked holder cannot move its tokens; the enforcer can recover them | post-run checks P1 to P3 | read-only simulations on the testnet end state agree with the local copy | that TokenOne uses the enforcer this way in production |
 | The testnet token is TokenOne's code | B0a, B0b | byte-identical runtime outside immutables | that roles or modules are set the same way on mainnet |
 | The log is genuine | checker + tamper tests on GitHub Actions | chain, log and a fresh re-execution agree; edits are caught | anything outside the logged transactions |
 
@@ -104,6 +119,7 @@ One correction of my own method: the first checker run flagged one mismatch, the
 
 - Off-chain steps (identity check, how receivables are chosen, the redemption window) are taken from the announcement and cannot be verified onchain.
 - The vault's whitelist is managed by its operator, the vault is an upgradeable proxy, and the fund's admin can change its report limits. These rules are as strong as those roles.
+- The BRL1.p balance is a dated onchain token-balance reading. It does not verify BRL1's reserves behind the bridged token.
 - deployedCapital is a reported number. Onchain I can check the report events and the two limits (a maximum report age of 24 hours and a maximum change of 10% per report), not the receivables behind it.
 - Scope: Part A covers the vault's deposit request on mainnet; Part B covers the token's transfer rules on testnet.
 - Part B uses my test module, not TokenOne's. Not tested: forced transfer while paused or frozen, burns, permit, role changes, the vault's redemption path.
