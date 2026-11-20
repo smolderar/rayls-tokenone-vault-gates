@@ -20,6 +20,8 @@ jobs:
           node bench/tools/compile_module.js source/contract-0x36f480c489f4cf6aacf91c7605504a840060e376.json /tmp/TestAllowlistModule.json
           cmp /tmp/CompliantERC20.json build/CompliantERC20.json
           cmp /tmp/TestAllowlistModule.json build/TestAllowlistModule.json
+      - name: Check MANIFEST.sha256 against every file
+        run: node checker/manifest.js check
       - name: Rebuild bench/index.html and compare byte for byte
         run: |
           node bench/tools/build_page.js /tmp/index.html
