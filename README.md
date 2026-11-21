@@ -44,7 +44,7 @@ Method: `eth_call` simulations at one fixed block per run. The outsider is my fr
 | A4 same request from the control | passes the gate, reverts ERC20InsufficientAllowance | same | same |
 | Vault totalAssets (BRL1.p) | 99,935.889926 | 99,935.889926 | 255,281.489244 |
 | Share of the 300,000 cap | 33.31% | 33.31% | 85.09% |
-| Whitelist events since deployment | 11 added, 1 removed | same | same |
+| Whitelist events, block 14,731,249 (vault's first log) to the run block | 11 added, 1 removed | same | same |
 | Deposit settlements | 2 | 2 | 3 (new: 20 Nov 15:12:23, epoch 5, 155,345.599318 BRL1.p) |
 | TKONE02 idle BRL1.p | 99,935.883672 | 99,935.883672 | 255,281.482990 |
 | TKONE02 reported deployedCapital | 10.054178 | 10.054178 | 10.054178 |
