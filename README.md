@@ -99,7 +99,7 @@ Two kinds of checks, kept apart: a fresh reconstruction from chain data (the che
 
 `checker/tamper.js` first requires the untouched log to pass, then edits 8 copies (a status, a hash, a revert, a gas value, a deleted record, a block time, the plan hash, a dropped event). All 8 are rejected.
 
-GitHub Actions runs all five jobs on every push. The run shown in the video, all jobs green: https://github.com/smolderar/rayls-tokenone-vault-gates/actions/runs/44635825447 . Later commits (README, post-run checks) are on the Actions page.
+GitHub Actions runs all five jobs on every push. The run shown in the video, all jobs green, including the post-run checks: https://github.com/smolderar/rayls-tokenone-vault-gates/actions/runs/44829607395 . Later commits (README) are on the Actions page.
 
 One correction of my own method: the first checker run flagged one mismatch, the plan hash transaction used 22,280 gas on Rayls Testnet but 21,512 in my local EVM. 22,280 is 21,000 + 10 x 128, the calldata floor of EIP-7623 (Prague rules) for 32 non-zero bytes. My local EVM ran the older Cancun rules. With Prague rules all 47 match. The Windows job also failed once because Git changed the plan file's line endings; the workflow now keeps bytes exact.
 
