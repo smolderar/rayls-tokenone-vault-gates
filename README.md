@@ -61,7 +61,7 @@ Why AddressNotAllowed is the whitelist and not something else: in the verified L
 TokenOne's debenture token NF01 (`0x36f480c489F4cF6AAcF91C7605504a840060e376`) is a verified CompliantERC20. Its transfer rules: a compliance module decides who may send and receive, an enforcer can freeze balances and force transfers, a pauser can pause.
 
 - B0a: compiling the verified source with the recorded settings gives NF01's onchain runtime bytecode exactly, outside the 8 immutable ranges (7,395 bytes, 0 differ).
-- B0b: the testnet copy (`0x52043c8de3355f4e44d22e41bc2dd586580758fa`) is that same compiled code. The module (`0xc2d43fb42ed60c755a0ea7275b6750e4e371a4c7`) is mine, because TokenOne's module implementation is not verified.
+- B0b: the testnet copy (`0x52043c8de3355f4e44d22e41bc2dd586580758fa`) is that same compiled code. The module (`0xc2d43fb42ed60c755a0ea7275b6750e4e371a4c7`) is my own simple allowlist, standing in for TokenOne's module so the test isolates the token's own rules.
 - Run: 19 Nov 2026 20:43:38 to 21:04:56 UTC, testnet blocks 24,582,821 to 24,585,147. Wallets W3 Issuer (all roles), W3 Investor, W3 Outsider (never allowlisted except inside T8).
 
 | Test | Change from the baseline | Expected and seen, 3 of 3 rounds |
@@ -115,14 +115,13 @@ One correction of my own method: the first checker run flagged one mismatch, the
 | The testnet token is TokenOne's code | B0a, B0b | byte-identical runtime outside immutables | that roles or modules are set the same way on mainnet |
 | The log is genuine | checker + tamper tests on GitHub Actions | chain, log and a fresh re-execution agree; edits are caught | anything outside the logged transactions |
 
-## Limits
+## Scope
 
-- Off-chain steps (identity check, how receivables are chosen, the redemption window) are taken from the announcement and cannot be verified onchain.
-- The vault's whitelist is managed by its operator, the vault is an upgradeable proxy, and the fund's admin can change its report limits. These rules are as strong as those roles.
-- The BRL1.p balance is a dated onchain token-balance reading. It does not verify BRL1's reserves behind the bridged token.
-- deployedCapital is a reported number. Onchain I can check the report events and the two limits (a maximum report age of 24 hours and a maximum change of 10% per report), not the receivables behind it.
-- Scope: Part A covers the vault's deposit request on mainnet; Part B covers the token's transfer rules on testnet.
-- Part B uses my test module, not TokenOne's. Not tested: forced transfer while paused or frozen, burns, permit, role changes, the vault's redemption path.
+- Part A tested the vault's deposit request on mainnet (read-only simulations at three blocks) and read the fund's balances at those blocks.
+- Part B tested the token's transfer rules on testnet: TokenOne's verified token code with my own test module. Not covered: forced transfer while paused or frozen, burns, permit, role changes, the vault's redemption path.
+- The identity check happens off chain: KYC for this vault is done by Rayls on the vault page. Other off-chain steps (how receivables are chosen, the redemption window) are taken from the announcement.
+- The BRL1.p balance is a dated onchain token-balance reading, not a check of BRL1's reserves behind the bridged token.
+- deployedCapital is a reported number. Onchain I checked the report events and the two limits (a maximum report age of 24 hours and a maximum change of 10% per report), not the receivables behind it.
 
 ## Reproduce
 
