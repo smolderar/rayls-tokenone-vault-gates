@@ -172,8 +172,13 @@ async function main() {
     const where = st.id;
     if (!rec || rec.step !== st.id) { fail(where, `log order: expected ${st.id}, found ${rec ? rec.step : 'nothing'}`); continue; }
     // chain data
-    const tx = await rpcResult(RPC, 'eth_getTransactionByHash', [rec.hash]);
-    const rc = await rpcResult(RPC, 'eth_getTransactionReceipt', [rec.hash]);
+    // a load-balanced public RPC can briefly answer null for a mined transaction: ask again before calling it missing
+    let tx = null, rc = null;
+    for (let a = 0; a < 6 && (!tx || !rc); a++) {
+      if (a) await new Promise(r => setTimeout(r, 2000 * a));
+      tx = await rpcResult(RPC, 'eth_getTransactionByHash', [rec.hash]);
+      rc = await rpcResult(RPC, 'eth_getTransactionReceipt', [rec.hash]);
+    }
     if (!tx || !rc) { fail(where, `transaction ${rec.hash} not found on the testnet`); continue; }
     const blk = await rpcResult(RPC, 'eth_getBlockByNumber', [rc.blockNumber, false]);
     const bn = Number(BigInt(rc.blockNumber)); const status = Number(BigInt(rc.status)); const gasUsed = Number(BigInt(rc.gasUsed));
